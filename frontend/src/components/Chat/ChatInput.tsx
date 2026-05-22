@@ -88,9 +88,16 @@ const DEFAULT_MODEL_OPTIONS: ModelOption[] = [
   },
   {
     id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro',
-    description: 'DeepInfra',
+    name: 'DeepSeek V4 Pro (HF)',
+    description: 'DeepInfra via HF router',
     modelPath: 'deepseek-ai/DeepSeek-V4-Pro:deepinfra',
+    avatarUrl: getHfAvatarUrl('deepseek-ai/DeepSeek-V4-Pro'),
+  },
+  {
+    id: 'deepseek-v4-pro-api',
+    name: 'DeepSeek V4 Pro (API)',
+    description: 'api.deepseek.com',
+    modelPath: 'deepseek/deepseek-chat',
     avatarUrl: getHfAvatarUrl('deepseek-ai/DeepSeek-V4-Pro'),
   },
 ];

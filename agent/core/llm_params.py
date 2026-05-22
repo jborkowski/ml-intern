@@ -243,6 +243,22 @@ def _resolve_llm_params(
                 params["reasoning_effort"] = reasoning_effort
         return params
 
+    if model_name.startswith("deepseek/"):
+        # Direct DeepSeek API — bypass HF router. ``DEEPSEEK_API_BASE``
+        # overrides for self-hosted / proxied deepseek-compatible endpoints.
+        # Neither deepseek-chat nor deepseek-reasoner accept a
+        # ``reasoning_effort`` knob, so it's dropped.
+        if reasoning_effort and strict:
+            raise UnsupportedEffortError(
+                "DeepSeek API doesn't accept reasoning_effort"
+            )
+        api_base = os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+        return {
+            "model": model_name,
+            "api_base": api_base,
+            "api_key": os.environ.get("DEEPSEEK_API_KEY"),
+        }
+
     if is_reserved_local_model_id(model_name):
         raise ValueError(f"Unsupported local model id: {model_name}")
 

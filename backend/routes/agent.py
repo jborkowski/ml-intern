@@ -117,9 +117,15 @@ def _available_models() -> list[dict[str, Any]]:
         },
         {
             "id": "deepseek-ai/DeepSeek-V4-Pro:deepinfra",
-            "label": "DeepSeek V4 Pro",
+            "label": "DeepSeek V4 Pro (HF)",
             "provider": "huggingface",
             "tier": "free",
+        },
+        {
+            "id": "deepseek/deepseek-chat",
+            "label": "DeepSeek V4 Pro (API)",
+            "provider": "deepseek",
+            "tier": "pro",
         },
     ]
     return models

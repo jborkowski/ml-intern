@@ -21,6 +21,7 @@ from fastapi import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
+from huggingface_hub import HfApi
 from huggingface_hub.errors import HfHubHTTPError
 from litellm import Message, acompletion
 from pydantic import ValidationError
@@ -746,6 +747,137 @@ async def get_jobs_access_info(
         "eligible_namespaces": access.eligible_namespaces if access else [],
         "default_namespace": access.default_namespace if access else None,
         "billing_url": "https://huggingface.co/settings/billing",
+    }
+
+
+def _personal_trace_repo_for_user(user: dict[str, Any]) -> str | None:
+    """Resolve the per-user trace dataset repo id from server config + HF user.
+
+    Mirrors ``Session._personal_trace_repo_id`` but doesn't require an active
+    session — the web context computes the same id from the configured
+    template and the authenticated user's HF username.
+    """
+    config = session_manager.config
+    if not getattr(config, "share_traces", False):
+        return None
+    template = getattr(config, "personal_trace_repo_template", None)
+    if not template:
+        return None
+    hf_user = user.get("username") or user.get("user_id")
+    if not hf_user or hf_user == "dev":
+        return None
+    try:
+        return template.format(hf_user=hf_user)
+    except (KeyError, IndexError):
+        return None
+
+
+@router.get("/share-traces")
+async def get_share_traces(
+    request: Request, user: dict = Depends(get_current_user)
+) -> dict:
+    """Return the user's personal trace dataset id, URL, and visibility.
+
+    Used by the avatar menu's "Share traces" panel to show the current
+    state before the user flips it. ``visibility`` is ``null`` when the
+    dataset hasn't been created yet — first save flips it into existence.
+    """
+    repo_id = _personal_trace_repo_for_user(user)
+    if not repo_id:
+        return {"enabled": False, "repo_id": None, "url": None, "visibility": None}
+
+    token = resolve_hf_request_token(request) or _user_hf_token(user)
+    url = f"https://huggingface.co/datasets/{repo_id}"
+    if not token:
+        return {
+            "enabled": True,
+            "repo_id": repo_id,
+            "url": url,
+            "visibility": None,
+            "error": "missing_token",
+        }
+    api = HfApi(token=token)
+    try:
+        info = await asyncio.to_thread(
+            api.repo_info, repo_id=repo_id, repo_type="dataset"
+        )
+    except HfHubHTTPError as e:
+        if getattr(e.response, "status_code", None) == 404:
+            return {
+                "enabled": True,
+                "repo_id": repo_id,
+                "url": url,
+                "visibility": None,
+            }
+        logger.warning("share-traces lookup failed for %s: %s", repo_id, e)
+        raise HTTPException(status_code=502, detail="Hugging Face Hub lookup failed.")
+    visibility = "private" if getattr(info, "private", False) else "public"
+    return {
+        "enabled": True,
+        "repo_id": repo_id,
+        "url": url,
+        "visibility": visibility,
+    }
+
+
+@router.post("/share-traces")
+async def set_share_traces(
+    body: dict, request: Request, user: dict = Depends(get_current_user)
+) -> dict:
+    """Flip the user's personal trace dataset between public and private.
+
+    Idempotent: creates the repo on first call so the toggle works even
+    before any session has been saved. Uses the caller's HF token —
+    write-scoped to their namespace, never touches the shared org dataset.
+    """
+    repo_id = _personal_trace_repo_for_user(user)
+    if not repo_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Personal trace sharing is not configured for this user.",
+        )
+    visibility = body.get("visibility")
+    if visibility not in {"public", "private"}:
+        raise HTTPException(
+            status_code=400,
+            detail="visibility must be 'public' or 'private'.",
+        )
+    token = resolve_hf_request_token(request) or _user_hf_token(user)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="A Hugging Face token is required to change trace visibility.",
+        )
+    private = visibility == "private"
+    api = HfApi(token=token)
+    try:
+        await asyncio.to_thread(
+            api.create_repo,
+            repo_id=repo_id,
+            repo_type="dataset",
+            private=private,
+            token=token,
+            exist_ok=True,
+        )
+        await asyncio.to_thread(
+            api.update_repo_settings,
+            repo_id=repo_id,
+            repo_type="dataset",
+            private=private,
+            token=token,
+        )
+    except HfHubHTTPError as e:
+        logger.warning(
+            "share-traces update failed for %s: status=%s",
+            repo_id,
+            getattr(e.response, "status_code", None),
+        )
+        raise HTTPException(status_code=502, detail=f"Hugging Face Hub error: {e}")
+    return {
+        "enabled": True,
+        "repo_id": repo_id,
+        "url": f"https://huggingface.co/datasets/{repo_id}",
+        "visibility": visibility,
     }
 
 

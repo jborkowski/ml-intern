@@ -7,10 +7,15 @@ import {
   IconButton,
   Alert,
   AlertTitle,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
   Snackbar,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -25,6 +30,7 @@ import SessionChat from '@/components/SessionChat';
 import CodePanel from '@/components/CodePanel/CodePanel';
 import WelcomeScreen from '@/components/WelcomeScreen/WelcomeScreen';
 import YoloControl from '@/components/YoloControl';
+import ShareTracesDialog from '@/components/ShareTracesDialog';
 import { apiFetch } from '@/utils/api';
 
 const DRAWER_WIDTH = 260;
@@ -47,6 +53,8 @@ export default function AppLayout() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [showExpiredToast, setShowExpiredToast] = useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState<null | HTMLElement>(null);
+  const [shareTracesOpen, setShareTracesOpen] = useState(false);
   const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isResizing = useRef(false);
@@ -302,10 +310,12 @@ export default function AppLayout() {
               <Avatar
                 src={user.picture}
                 alt={user.username || 'User'}
-                sx={{ width: 28, height: 28, ml: 0.5 }}
+                onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
+                sx={{ width: 28, height: 28, ml: 0.5, cursor: 'pointer' }}
               />
             ) : user?.username ? (
               <Avatar
+                onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
                 sx={{
                   width: 28,
                   height: 28,
@@ -313,6 +323,7 @@ export default function AppLayout() {
                   bgcolor: 'primary.main',
                   fontSize: '0.75rem',
                   fontWeight: 700,
+                  cursor: 'pointer',
                 }}
               >
                 {user.username[0].toUpperCase()}
@@ -320,6 +331,37 @@ export default function AppLayout() {
             ) : null}
           </Box>
         </Box>
+
+        <Menu
+          anchorEl={accountMenuAnchor}
+          open={Boolean(accountMenuAnchor)}
+          onClose={() => setAccountMenuAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          slotProps={{
+            paper: { sx: { bgcolor: 'var(--panel)', border: '1px solid var(--divider)', mt: 0.5 } },
+          }}
+        >
+          <MenuItem
+            onClick={() => { setAccountMenuAnchor(null); setShareTracesOpen(true); }}
+            sx={{ py: 1.25 }}
+          >
+            <ListItemIcon sx={{ minWidth: 32, color: 'var(--muted-text)' }}>
+              <ShareOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary="Share traces…"
+              secondary="Manage your HF trace dataset visibility"
+              primaryTypographyProps={{ fontSize: '0.85rem' }}
+              secondaryTypographyProps={{ fontSize: '0.72rem', color: 'var(--muted-text)' }}
+            />
+          </MenuItem>
+        </Menu>
+
+        <ShareTracesDialog
+          open={shareTracesOpen}
+          onClose={() => setShareTracesOpen(false)}
+        />
 
         {/* -- Chat + Code Panel ------------------------------------------ */}
         <Box
